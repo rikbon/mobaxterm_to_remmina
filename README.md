@@ -43,6 +43,10 @@ The profiles will be exported to `./exported` locally, so you have to copy all t
 
 **The tool will preserve the group hierarchy of MobaXterm on Remmina**, so your sessions will be organized as they were.
 
+## Changelog
+
+See [`CHANGES.md`](CHANGES.md) for a detailed history of changes.
+
 ## Compatibility
 
 This tool is currently compatible with SSH and RDP only.
