@@ -1,19 +1,21 @@
-#! /usr/bin/env python
+#!/usr/bin/env python3
 # Author: Sotirios Roussis <root@xtonousou.com>
+# Revised by: Rik Bon <rikbon@gmail.com>
 
 import re
 import os
 import sys
 import base64
-
+import argparse
 import configparser
-
 from getpass import getpass
+from typing import Dict, Optional
+
 from Crypto.Hash import SHA512
 from Crypto.Cipher import AES, DES3
 
 
-class MobaXtermCryptoSafe(object):
+class MobaXtermCryptoSafe:
     """
     Ref: https://github.com/HyperSine/how-does-MobaXterm-encrypt-password
     """
@@ -26,7 +28,7 @@ class MobaXtermCryptoSafe(object):
         return cipher.decrypt(base64.b64decode(ciphertext))
 
 
-class RemminaCryptoSafe(object):
+class RemminaCryptoSafe:
     """
     Ref: https://github.com/Rohith050/mremoteng_to_remmina
     """
@@ -45,8 +47,10 @@ class ConfigParserMultiOpt(configparser.RawConfigParser):
     ConfigParser allowing duplicate keys. Values are stored in a list
     """
 
-    def __init__(self):
-        configparser.RawConfigParser.__init__(self, empty_lines_in_values=False, strict=False)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._inline_comment_prefixes = ()
+        self._comment_prefixes = ('#', ';')
 
     def _read(self, fp, fpname):
         """Parse a sectioned configuration file.
@@ -163,28 +167,24 @@ class ConfigParserMultiOpt(configparser.RawConfigParser):
         self._join_multiline_values()
 
 
-class SSH(object):
-
-    def __init__(self, *args, **kwargs):
-        self.ip = kwargs.get('ip')
-        self.port = kwargs.get('port')
-        self.name = kwargs.get('name')
-        self.username = kwargs.get('username')
-        self.domain = kwargs.get('username')
-        self.password = kwargs.get('password')
-        self.group = kwargs.get('group')
-        self.theme = kwargs.get('theme')
+class SSH:
+    def __init__(self, ip: str, port: str, name: str, username: str, password: str, group: str, theme: str):
+        self.ip = ip
+        self.port = port
+        self.name = name
+        self.username = username
+        self.password = password
+        self.group = group
+        self.theme = theme
         self.protocol = 'SSH'
-    
-    def get_remmina_conf(self):
-        server = self.ip
-        if int(self.port) != 22:
-            server = self.ip + ':' + str(self.port)
+
+    def get_remmina_conf(self) -> configparser.ConfigParser:
+        server = f"{self.ip}:{self.port}" if int(self.port) != 22 else self.ip
 
         config = configparser.ConfigParser()
         config['remmina'] = {
-            'ssh_tunnel_loopback': 0,
-            'window_maximize': 0,
+            'ssh_tunnel_loopback': '0',
+            'window_maximize': '0',
             'protocol': self.protocol,
             'name': self.name,
             'username': self.username,
@@ -193,81 +193,70 @@ class SSH(object):
             'ssh_passphrase': '',
             'run_line': '',
             'precommand': '',
-            'sshlogenabled': 0,
-            'ssh_tunnel_enabled': 0,
+            'sshlogenabled': '0',
+            'ssh_tunnel_enabled': '0',
             'ssh_charset': '',
             'window_height': '480',
             'keyboard_grab': '0',
             'window_width': '640',
-            'ssh_auth': 0,
-            'ignore-tls-errors': 1,
+            'ssh_auth': '0',
+            'ignore-tls-errors': '1',
             'postcommand': '',
             'server': server,
-            'disablepasswordstoring': 0,
+            'disablepasswordstoring': '0',
             'ssh_color_scheme': self.theme,
-            'audiblebell': 0,
+            'audiblebell': '0',
             'ssh_tunnel_username': '',
-            'sshsavesession': 0,
+            'sshsavesession': '0',
             'ssh_hostkeytypes': '',
             'ssh_tunnel_password': '',
-            'profile-lock': 0,
+            'profile-lock': '0',
             'sshlogfolder': '',
             'group': self.group,
             'ssh_tunnel_server': '',
             'ssh_ciphers': '',
-            'enable-autostart': 0,
+            'enable-autostart': '0',
             'ssh_kex_algorithms': '',
-            'ssh_compression': 0,
-            'ssh_tunnel_auth': 0,
+            'ssh_compression': '0',
+            'ssh_tunnel_auth': '0',
             'ssh_tunnel_certfile': '',
             'notes_text': '',
             'exec': '',
-            'viewmode': 1,
+            'viewmode': '1',
             'sshlogname': '',
             'ssh_tunnel_passphrase': '',
             'ssh_tunnel_privatekey': '',
-            'ssh_stricthostkeycheck': 0,
-            'ssh_forward_x11': 0,
+            'ssh_stricthostkeycheck': '0',
+            'ssh_forward_x11': '0',
         }
-
         return config
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'ssh'
 
 
-class RDP(object):
-
-    def __init__(self, *args, **kwargs):
+class RDP:
+    def __init__(self, ip: str, port: str, name: str, username: str, password: str, group: str):
         self.protocol = 'RDP'
-        self.ip = kwargs.get('ip')
-        self.port = kwargs.get('port')
-        self.name = kwargs.get('name')
-        self.username = kwargs.get('username')
-        self.domain = kwargs.get('username')
-        self.password = kwargs.get('password')
-        self.group = kwargs.get('group')
+        self.ip = ip
+        self.port = port
+        self.name = name
+        self.password = password
+        self.group = group
 
-        # handle domain\username style
-        if '\\' in self.username:
-            parts = self.username.split('\\')
-            self.domain = parts[0]
-            self.username = parts[1]
+        if '\\' in username:
+            self.domain, self.username = username.split('\\', 1)
+        elif '@' in username:
+            self.username, self.domain = username.split('@', 1)
+        else:
+            self.username = username
+            self.domain = ''
         
-        # handle username@domain style
-        if '@' in self.username:
-            parts = self.username.split('@')
-            self.username = parts[0]
-            self.domain = parts[1]
-        
-        # handle dot notation for MACHINE domain
         if self.domain == '.':
             self.domain = ''
-    
-    def get_remmina_conf(self):
-        server = self.ip
-        if int(self.port) != 3389:
-            server = self.ip + ':' + str(self.port)
+
+    def get_remmina_conf(self) -> configparser.ConfigParser:
+        server = f"{self.ip}:{self.port}" if int(self.port) != 3389 else self.ip
 
         config = configparser.ConfigParser()
         config['remmina'] = {
@@ -275,230 +264,229 @@ class RDP(object):
             'gateway_username': '',
             'notes_text': '',
             'vc': '',
-            'preferipv6': 0,
-            'ssh_tunnel_loopback': 0,
+            'preferipv6': '0',
+            'ssh_tunnel_loopback': '0',
             'serialname': '',
             'tls-seclevel': '',
             'freerdp_log_level': 'INFO',
             'printer_overrides': '',
             'name': self.name,
-            'console': 0,
-            'colordepth': 99,
+            'console': '0',
+            'colordepth': '99',
             'security': '',
             'precommand': '',
-            'disable_fastpath': 0,
-            'left-handed': 0,
+            'disable_fastpath': '0',
+            'left-handed': '0',
             'postcommand': '',
-            'multitransport': 0,
+            'multitransport': '0',
             'group': self.group,
             'server': server,
             'ssh_tunnel_certfile': '',
-            'glyph-cache': 0,
-            'ssh_tunnel_enabled': 0,
-            'disableclipboard': 0,
+            'glyph-cache': '0',
+            'ssh_tunnel_enabled': '0',
+            'disableclipboard': '0',
             'parallelpath': '',
             'audio-output': '',
             'monitorids': '',
-            'cert_ignore': 0,
-            'serialpermissive': 0,
+            'cert_ignore': '0',
+            'serialpermissive': '0',
             'gateway_server': '',
             'protocol': self.protocol,
             'ssh_tunnel_password': '',
-            'old-license': 0,
-            'resolution_mode': 2,
+            'old-license': '0',
+            'resolution_mode': '2',
             'pth': '',
             'loadbalanceinfo': '',
-            'disableautoreconnect': 0,
+            'disableautoreconnect': '0',
             'clientbuild': '',
             'clientname': '',
-            'resolution_width': 0,
+            'resolution_width': '0',
             'drive': '',
-            'relax-order-checks': 0,
+            'relax-order-checks': '0',
             'username': self.username,
-            'base-cred-for-gw': 0,
+            'base-cred-for-gw': '0',
             'gateway_domain': '',
-            'profile-lock': 0,
+            'profile-lock': '0',
             'rdp2tcp': '',
             'gateway_password': '',
             'rdp_reconnect_attempts': '',
             'domain': self.domain,
             'serialdriver': '',
-            'restricted-admin': 0,
+            'restricted-admin': '0',
             'smartcardname': '',
-            'multimon': 0,
+            'multimon': '0',
             'serialpath': '',
             'network': 'none',
             'exec': '',
-            'enable-autostart': 0,
+            'enable-autostart': '0',
             'usb': '',
-            'shareprinter': 0,
+            'shareprinter': '0',
             'ssh_tunnel_passphrase': '',
-            'disablepasswordstoring': 0,
-            'shareparallel': 0,
-            'quality': 9,
-            'span': 0,
+            'disablepasswordstoring': '0',
+            'shareparallel': '0',
+            'quality': '9',
+            'span': '0',
             'parallelname': '',
-            'ssh_tunnel_auth': 0,
+            'ssh_tunnel_auth': '0',
             'keymap': '',
             'ssh_tunnel_username': '',
             'execpath': '',
-            'shareserial': 0,
-            'resolution_height': 0,
+            'shareserial': '0',
+            'resolution_height': '0',
             'timeout': '',
-            'useproxyenv': 0,
-            'sharesmartcard': 0,
+            'useproxyenv': '0',
+            'sharesmartcard': '0',
             'freerdp_log_filters': '',
             'microphone': '',
             'dvc': '',
             'ssh_tunnel_privatekey': '',
             'gwtransp': 'http',
             'ssh_tunnel_server': '',
-            'ignore-tls-errors': 1,
-            'disable-smooth-scrolling': 0,
-            'gateway_usage': 0,
+            'ignore-tls-errors': '1',
+            'disable-smooth-scrolling': '0',
+            'gateway_usage': '0',
             'sound': 'off',
-            'websockets': 0,
+            'websockets': '0',
         }
-
         return config
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'rdp'
 
 
-class Converter(object):
+class Converter:
+    def __init__(self, input_file: str, export_dir: str, theme: str, with_passwords: bool):
+        self.input_file = input_file
+        self.export_dir = export_dir
+        self.theme = theme
+        self.with_passwords = with_passwords
+        self.config = ConfigParserMultiOpt(empty_lines_in_values=False, strict=False)
+        self.mobaxterm_safe: Optional[MobaXtermCryptoSafe] = None
+        self.remmina_safe: Optional[RemminaCryptoSafe] = None
+        self.moba_proto_map = {0: SSH, 4: RDP}
 
-    def __init__(self):
-        self.config = ConfigParserMultiOpt()
-        self.config.read(sys.argv[1])
-
-        self.theme_dir = '/usr/share/remmina/theme'
-        self.theme_def = 'Linux'
-        self.theme = self.theme_def
-        self.theme_map = {t.replace('.colors', '').lower(): i for i, t in enumerate(['Linux', 'Tango', 'Gruvbox', 'Solarized Dark', 'Solarized Light', 'XTerm', 'Custom', ] + sorted(os.listdir(self.theme_dir)))}
-
-        self.with_password = False
-        self.mobaxterm_safe, self.remmina_safe = None, None
-
-        if len(sys.argv) > 2:
-            self.with_password = True if sys.argv[2].lower() in ('--decrypt', '--with-passwords', '--passwords', ) else False
-            if self.with_password is True:
-                mobaxterm_master_password = getpass('Enter MobaXterm master password: ')
-                self.mobaxterm_safe = MobaXtermCryptoSafe(mobaxterm_master_password.encode('cp1251'))
-                remmina_secret = getpass('Enter Remmina secret: ')
-                self.remmina_safe = RemminaCryptoSafe(remmina_secret)
-
-        if sys.argv[-2] in ('--color-theme', '--theme', '--color-scheme', '--colors', ):
-            self.theme = sys.argv[-1]
-            if self.theme.lower() not in self.theme_map.keys():
-                print('Warning', self.theme, 'cannot be found. Using a default one instead')
-                self.theme = self.theme_def
-
-        self.export_dir = './exported'
-        self.export_file = '{group}_{protocol}_{name}_{ip}.remmina'
-        self.moba_proto_map = {
-            0: SSH,
-            4: RDP,
-        }
-
-        self.prepare_fs()
+    def _prepare_fs(self):
+        if not os.path.isdir(self.export_dir):
+            os.mkdir(self.export_dir)
 
     @staticmethod
-    def get_valid_filename(name):
+    def get_valid_filename(name: str) -> str:
         s = str(name).strip().replace(' ', '_')
         s = re.sub(r'(?u)[^-\w.]', '', s)
         return s
 
-    def prepare_fs(self):
-        if not os.path.isdir(self.export_dir):
-            os.mkdir(self.export_dir)
-    
-    def to_remmina(self):
-        # Passwords
+    def _get_passwords(self) -> Dict[str, str]:
+        if not self.with_passwords:
+            return {}
+
+        mobaxterm_master_password = getpass('Enter MobaXterm master password: ')
+        self.mobaxterm_safe = MobaXtermCryptoSafe(mobaxterm_master_password.encode('cp1251'))
+        remmina_secret = getpass('Enter Remmina secret: ')
+        self.remmina_safe = RemminaCryptoSafe(remmina_secret)
+
         passwords = {}
-        if self.with_password is True:
-            tmp_passwords = dict(self.config.items('Passwords'))
-            for k, v in tmp_passwords.items():
-                if isinstance(v, (tuple, list, )):
-                    for credential in v:
-                        credential = credential.split('=')
-                        part_k = credential[0]
-                        part_v = '='.join(credential[1:])
-
-                        if part_k not in passwords:
-                            passwords[part_k] = part_v
-                    continue
-                elif '@' not in k:
-                    credential = v.split('=')
-                    part_k = credential[0]
-                    part_v = '='.join(credential[1:])
-
+        tmp_passwords = dict(self.config.items('Passwords'))
+        for k, v in tmp_passwords.items():
+            if isinstance(v, (tuple, list)):
+                for credential in v:
+                    part_k, part_v = credential.split('=', 1)
                     if part_k not in passwords:
                         passwords[part_k] = part_v
+            elif '@' not in k:
+                part_k, part_v = v.split('=', 1)
+                if part_k not in passwords:
+                    passwords[part_k] = part_v
+            elif k not in passwords:
+                passwords[k] = v
+        return passwords
 
-                    continue
-            
-                if k not in passwords:
-                    passwords[k] = v
-            del tmp_passwords
+    def convert(self):
+        try:
+            with open(self.input_file, 'r') as f:
+                self.config.read_file(f)
+        except FileNotFoundError:
+            print(f"Error: Input file not found at '{self.input_file}'")
+            sys.exit(1)
 
-        # Sessions
+        self._prepare_fs()
+        passwords = self._get_passwords()
+
         for section in self.config.sections():
-            # filter only sessions
-            if section.lower().startswith('bookmarks'):
-                bookmark = dict(self.config.items(section))
+            if not section.lower().startswith('bookmarks'):
+                continue
 
-                # skip folders without sessions
-                if len(bookmark.keys()) == 2:
+            bookmark = dict(self.config.items(section))
+            if len(bookmark) <= 2:  # 'subrep' and 'imgnum'
+                continue
+
+            group = bookmark.get('subrep', '').replace('\\', '/')
+
+            for session_name, session_info in bookmark.items():
+                if session_name in ('subrep', 'imgnum'):
                     continue
 
-                # construct group name for remmina
-                path = bookmark.get('subrep', '').replace('\\', '/')
+                parts = session_info.split('#')[2].split('%')
+                proto_id = int(parts[0])
+                
+                if proto_id not in self.moba_proto_map:
+                    continue
 
-                # construct session files
-                for session_name, session_info in bookmark.items():
-                    if session_name in ('subrep', 'imgnum', ):
-                        continue
+                class_ref = self.moba_proto_map[proto_id]
+                ip = parts[1]
+                port = parts[2]
+                username = parts[3]
+                password = '.'
 
-                    # get the session required info parts
-                    parts = session_info.split('#')[2].split('%')
+                if self.with_passwords and self.mobaxterm_safe and self.remmina_safe:
+                    ciphertext = passwords.get(f'{username}@{ip}')
+                    if ciphertext:
+                        plain_text = self.mobaxterm_safe.decrypt(ciphertext).decode('ansi')
+                        password = self.remmina_safe.encrypt(plain_text)
 
-                    class_ref = self.moba_proto_map.get(int(parts[0]))
-                    # unsupported protocols by Remmina, are skipped
-                    if not class_ref:
-                        continue
+                session_args = {
+                    "ip": ip,
+                    "port": port,
+                    "name": session_name,
+                    "username": username,
+                    "password": password,
+                    "group": group,
+                }
+                if class_ref == SSH:
+                    session_args["theme"] = self.theme
 
-                    ip = parts[1]
-                    username = parts[3]
-                    password = '.'
-                    if self.with_password is True:
-                        ciphertext = passwords.get('{username}@{ip}'.format(username=username, ip=ip))
-                        if ciphertext is not None:
-                            plain_text = self.mobaxterm_safe.decrypt(ciphertext).decode('ansi')
-                            password = self.remmina_safe.encrypt(plain_text)
+                session = class_ref(**session_args)
 
-                    session = class_ref(ip=ip,
-                                        name=session_name,
-                                        port=parts[2],
-                                        username=username,
-                                        group=path,
-                                        password=password,
-                                        theme=self.theme)
+                filename = self.get_valid_filename(
+                    f"{group.lower().replace('/', '-')}_{session}_{session_name.lower().replace(' ', '-')}_{ip.replace('.', '-')}.remmina"
+                )
 
-                    filename = self.export_file.format(group=path.lower().replace('/', '-'),
-                                                       protocol=str(session),
-                                                       name=session_name.lower().replace(' ', '-').replace('.', '-'),
-                                                       ip=parts[1].replace('.', '-'))
-                    filename = self.get_valid_filename(filename)
-                    if not filename:
-                        print('Cannot export {name} as its filename may act suspiciously on the target filesystem'.format(name=session_name))
-                        continue
+                if not filename:
+                    print(f"Warning: Cannot export '{session_name}' due to an invalid filename.")
+                    continue
 
-                    with open(self.export_dir + '/' + filename, 'w') as f:
-                        session.get_remmina_conf().write(f)
+                with open(os.path.join(self.export_dir, filename), 'w') as f:
+                    session.get_remmina_conf().write(f)
 
-        print('Successfully converted and exported Remmina sessions to "{edir}". Copy them to "~/.local/share/remmina" directory in order to be loaded by Remmina.'.format(edir=self.export_dir))
+        print(f'Successfully converted and exported Remmina sessions to "{self.export_dir}".')
+        print(f'Copy them to "~/.local/share/remmina" to be loaded by Remmina.')
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Convert MobaXterm sessions to Remmina connection files.')
+    parser.add_argument('input_file', help='Path to the MobaXterm sessions file (*.mxtsessions)')
+    parser.add_argument('--passwords', action='store_true', help='Decrypt and encrypt passwords')
+    parser.add_argument('--theme', default='Linux', help='Remmina color theme for SSH sessions')
+    parser.add_argument('--export-dir', default='./exported', help='Directory to export Remmina files')
+    args = parser.parse_args()
+
+    converter = Converter(
+        input_file=args.input_file,
+        export_dir=args.export_dir,
+        theme=args.theme,
+        with_passwords=args.passwords
+    )
+    converter.convert()
 
 
 if __name__ == '__main__':
-    Converter().to_remmina()
+    main()
